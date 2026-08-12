@@ -1,0 +1,40 @@
+# =============================================================================
+# Django / Flask project Dockerfile
+# Extends: docker.io/tnmurthy/default:latest
+# =============================================================================
+
+FROM docker.io/tnmurthy/default:latest
+
+# ---- Install Python runtime (as root) ---------------------------------------
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-venv \
+        python3-pip \
+        libpq-dev \
+        gcc \
+    && ln -sf /usr/bin/python3.11 /usr/local/bin/python \
+    && ln -sf /usr/bin/pip3     /usr/local/bin/pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- Switch back to non-root ------------------------------------------------
+USER appuser
+
+# ---- Virtual environment (keeps site-packages clean) ------------------------
+RUN python -m venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# ---- Dependencies (cached layer) --------------------------------------------
+COPY --chown=appuser:appgroup requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ---- Application code -------------------------------------------------------
+COPY --chown=appuser:appgroup . .
+
+# ---- Runtime ----------------------------------------------------------------
+EXPOSE 8000
+
+# Gunicorn for production; swap entrypoint for dev:
+# CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "config.wsgi:application"]
