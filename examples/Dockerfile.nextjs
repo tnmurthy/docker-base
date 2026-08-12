@@ -1,0 +1,32 @@
+# =============================================================================
+# Next.js / Node.js project Dockerfile
+# Extends: docker.io/tnmurthy/default:latest
+# =============================================================================
+
+FROM docker.io/tnmurthy/default:latest
+
+# ---- Install Node.js 20 LTS (as root) ---------------------------------------
+USER root
+
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g pnpm   # or yarn — remove if using npm
+
+USER appuser
+
+# ---- Dependencies (cached layer) --------------------------------------------
+COPY --chown=appuser:appgroup package.json pnpm-lock.yaml* package-lock.json* ./
+RUN pnpm install --frozen-lockfile 2>/dev/null \
+    || npm ci --omit=dev
+
+# ---- Build Next.js ----------------------------------------------------------
+COPY --chown=appuser:appgroup . .
+RUN npm run build 2>/dev/null || pnpm build
+
+# ---- Runtime ----------------------------------------------------------------
+ENV NODE_ENV=production
+EXPOSE 3000
+
+CMD ["node", "server.js"]
+# For Next.js standard start: CMD ["npx", "next", "start"]
