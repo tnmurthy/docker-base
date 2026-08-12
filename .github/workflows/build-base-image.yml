@@ -1,0 +1,75 @@
+# =============================================================================
+# Builds and pushes docker.io/tnmurthy/default:latest
+#
+# Secrets required (set in GitHub → Settings → Secrets → Actions):
+#   DOCKERHUB_USERNAME  — your Docker Hub username (tnmurthy)
+#   DOCKERHUB_TOKEN     — Docker Hub access token (not your password)
+#
+# Triggers:
+#   • Any push to main that touches the Dockerfile
+#   • Manual dispatch (useful for forcing a rebuild / version bump)
+#   • Weekly schedule — keeps Supabase CLI and gcloud up to date
+# =============================================================================
+
+name: Build & Push Base Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+  workflow_dispatch:
+  schedule:
+    # Every Monday 03:00 UTC — refreshes Supabase CLI and gcloud to latest
+    - cron: "0 3 * * 1"
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ---- Checkout ----------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---- Docker Buildx (multi-arch support) --------------------------------
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ---- Authenticate to Docker Hub ----------------------------------------
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ---- Build metadata (tags) ---------------------------------------------
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: docker.io/tnmurthy/default
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+
+      # ---- Build & Push ------------------------------------------------------
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Layer cache speeds up subsequent builds significantly
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ---- Summary -----------------------------------------------------------
+      - name: Image digest
+        run: echo "Pushed ${{ steps.meta.outputs.tags }}"
