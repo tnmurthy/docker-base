@@ -1,0 +1,31 @@
+# =============================================================================
+# Flask / FastAPI micro-service Dockerfile
+# Extends: docker.io/tnmurthy/default:latest
+# Suitable for: API servers, LLM integration services, n8n webhooks
+# =============================================================================
+
+FROM docker.io/tnmurthy/default:latest
+
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-venv \
+        python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+USER appuser
+
+RUN python3.11 -m venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+COPY --chown=appuser:appgroup requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY --chown=appuser:appgroup . .
+
+EXPOSE 8080
+
+# Uvicorn for FastAPI; swap to gunicorn for Flask:
+# CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:8080", "app:app"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]
